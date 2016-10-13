@@ -1,22 +1,16 @@
 nifi:
-  url: http://192.168.99.103:9091
+  url: http://127.0.0.1:8080
   clientId: Deployment Script v1
   templateUri: "https://cwiki.apache.org/confluence/download/attachments/57904847/Hello_NiFi_Web_Service.xml?version=1&modificationDate=1449369797000&api=v2"
   # templateUri: file:./Hello_nifi.xml
   undeploy:
-    controllerServices:
-      - StandardHttpContextMap
-      - SomeOtherControllerService
     processGroups:
-      - Hello NiFi Web Service
+      Hello NiFi Web Service:
+        controllerServices:
+          - StandardHttpContextMap
+          - SomeOtherControllerService
     templates:
       - Hello NiFi Web Service
-
-controllerServices:
-  StandardHttpContextMap:
-    state: ENABLED
-    config:
-      Maximum Outstanding Requests: 20
 
 processGroups:
   root: ~
@@ -31,3 +25,8 @@ processGroups:
       "Update Request Body with a greeting!":
         config:
           Replacement Value: Dynamically Configured NiFi!
+    controllerServices:
+      StandardHttpContextMap:
+        state: ENABLED
+        config:
+          Maximum Outstanding Requests: 20

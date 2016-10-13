@@ -65,14 +65,13 @@ nifi:
   # Tell NiFi we want some things removed to make way for this (re-) deployment
   undeploy:
 
-    # Names of controller services to remove. Ignores any missing ones
-    controllerServices:
-      - StandardHttpContextMap
-      - SomeOtherControllerService
-
     # Names of process groups to remove. These are in your template
     processGroups:
-      - Hello NiFi Web Service
+      Hello NiFi Web Service:
+        # Names of controller services to remove. Ignores any missing ones
+        controllerServices:
+          - StandardHttpContextMap
+          - SomeOtherControllerService
 
     # Template names to remove. Because we're updating with a new version
     templates:
@@ -82,10 +81,6 @@ nifi:
 
 Next, one describes what configuration changes need to be applied to the template in this deployment:
 ```
-# Instantiate these controller services, our template uses them
-controllerServices:
-  StandardHttpContextMap:
-    state: ENABLED
 
 # Processors belong to process groups.
 # This way random ones won't be picked up (unlike a search api,
@@ -113,6 +108,10 @@ processGroups:
       "Update Request Body with a greeting!":
         config:
           Replacement Value: Dynamically Configured NiFi!
+    # Instantiate these controller services, our template uses them
+    controllerServices:
+      StandardHttpContextMap:
+        state: ENABLED
 
 ```
 
