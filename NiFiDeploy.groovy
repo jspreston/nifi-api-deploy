@@ -36,6 +36,8 @@ cli.with {
           args:1, argName:'id', type:String.class
   w longOpt: 'waittime', 'maximum wait time for process/service state change',
           args:1, argName:'time (ms)', type:Integer.class
+  t longOpt: 'template-dir', 'directory containing templates',
+          args:1, argName:'dir', type:String.class
 }
 
 def opts = cli.parse(args)
@@ -46,6 +48,7 @@ if (opts.help) {
 }
 
 maxWaitMs = opts.waittime ?: 30000
+templateDir = opts.'template-dir' ?: '.'
 
 def deploymentSpec
 if (opts.file) {
@@ -64,14 +67,19 @@ if (opts.debug) {
 
 // implementation methods below
 
+def templateAsFile(templateFile) {
+  new File(templateDir, templateFile)
+}
+
 /**
- * @param templateUri
+ * @param templateFile
  * @return map containing template name, list of top-level process groups in template, and list of top-level
  * controller services in template.
  */
-def parseTemplate(templateUri) {
-  log.info "URI: ${templateUri}"
-  def t = new XmlSlurper().parse(templateUri)
+def parseTemplate(templateFile) {
+  def templatePath = templateAsFile(templateFile)
+  log.info "template file: ${templatePath}"
+  def t = new XmlSlurper().parse(templatePath)
   def templateName = t.name.text()
   log.info "template name: ${templateName}"
   log.info "Number of process groups: ${t.snippet.processGroups.size()}"
@@ -139,11 +147,15 @@ def undeployProcessGroups(pgList) {
 
   def processGroups = new ProcessGroupLookup(nifi)
 
-  pgSaveData = pgList.collect { pgName ->
+  pgList.collect { pgName ->
     log.info "Undeploying Process Group: $pgName"
 
     // getting pgId
     def pg = processGroups.findByName(pgName)
+    if(pg == null){
+      log.info "processGroup ${pgName} not found for undeployment"
+      return
+    }
 
     def pgId = pg.id
 
@@ -167,7 +179,6 @@ def undeployProcessGroups(pgList) {
             connections: connData
     ]
   }
-  return pgSaveData
 }
 
 /**
@@ -193,11 +204,12 @@ def lookupTemplate(String name) {
   return t
 }
 
-def uploadTemplate(String templateUri) {
+def uploadTemplate(String templateFilename) {
+  def templateUri = templateAsFile(templateFilename).toURI()
   log.info "Loading template from URI: $templateUri"
-  def t = new XmlSlurper().parse(templateUri)
+  def t = new XmlSlurper().parse(templateUri.toString())
   assert t : "Error, couldn't find template file ${templateUri}"
-  templateName = t.name.text()
+  def templateName = t.name.text()
   assert templateName : "Error, couldn't find template name in ${templateUri}"
   undeployTemplate(templateName)
 
@@ -218,7 +230,7 @@ def uploadTemplate(String templateUri) {
           break
         case 201:
           // grab the trailing UUID part of the location URL header
-          templateId = xml.template.id.text()
+          def templateId = xml.template.id.text()
           log.info "Template successfully imported into NiFi. ID: $templateId"
           return templateId
         default:
@@ -259,11 +271,13 @@ class ProcessGroupLookup {
     this.processGroups = resp.data.processGroups
   }
 
-  def findByName(name) {
+  def findByName(name, assertExists=false) {
     def pgs = this.processGroups.findAll { it.component.name == name }
-    assert pgs.size() != 0 : "Processing Group '${name}' not found in " +
-            "processGroup ${parentId}, check your deployment config?"
-    assert pgs.size() == 1 : "Ambiguous Processing Group '${name}' in processGroup ${parentId}!"
+    if (assertExists) {
+      assert pgs.size() != 0: "Processing Group '${name}' not found in " +
+              "processGroup ${parentId}, check your deployment config?"
+    }
+    assert pgs.size() <= 1 : "Ambiguous Processing Group '${name}' in processGroup ${parentId}!"
     return pgs[0]
   }
 }
@@ -617,6 +631,7 @@ def instantiateConnection(connConfig) {
   def builder = new JsonBuilder()
   builder {
     revision {
+      clientId: client
       version 0
     }
     component {
@@ -744,6 +759,7 @@ def _changePortState(portId, connType, newState) {
   JsonBuilder builder = new JsonBuilder()
   builder {
     revision {
+      clientId client
       version resp.data.revision.version
     }
     id portId
@@ -889,7 +905,7 @@ defaultComment = "Last updated by '$client' on ${new Date()} from $thisHost"
 
 if (opts.debug) testTraversal(conf)
 
-templateData = conf.templates.collect { parseTemplate(it.uri) }
+templateData = conf.templates.collect { parseTemplate(it.key) }
 templateNames = templateData.collect { it.templateName }
 processGroups = templateData.collect { it.processGroups } .flatten()
 controllerServices = templateData.collect {it.controllerServices } .flatten()
@@ -901,9 +917,9 @@ log.info "undeploying controller services ${controllerServices}"
 undeployControllerServices(controllerServices)
 
 conf.templates.each {templateConfig ->
-  def templateId = uploadTemplate(templateConfig.uri)
+  def templateId = uploadTemplate(templateConfig.key)
   log.info "instantiating templateId ${templateId}"
-  instantiateTemplate(templateId, templateConfig?.position)
+  instantiateTemplate(templateId, templateConfig.value?.position)
 }
 
 log.info "Configuring Process Groups"
