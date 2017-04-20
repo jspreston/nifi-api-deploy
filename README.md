@@ -1,4 +1,4 @@
-## Note: this was originally created for NiFi 0.x. REST APIs and concepts have changed significantly in NiFi 1.x
+
 # NiFi Deployment Automation
 
  - Deploy & configure NiFi templates with a touch of a button (or, rather, a single command)
