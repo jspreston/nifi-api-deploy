@@ -54,7 +54,7 @@ def deploymentSpec
 if (opts.file) {
   deploymentSpec = opts.file
 } else {
-  log.error "Missing a file argument\n"
+  log.severe "Missing a file argument\n"
   cli.usage()
   System.exit(-1)
 }
@@ -103,7 +103,7 @@ def undeployTemplate(templateName) {
     assert resp.status == 200
     log.info "Deleted template : $templateName"
   }else{
-    log.warn "no template ${templateName} found to undeploy"
+    log.warning "no template ${templateName} found to undeploy"
   }
 }
 
@@ -133,7 +133,7 @@ def undeployControllerServices(csList) {
       )
       assert resp.status == 200
     } else {
-      log.warn "null controller service encountered"
+      log.warning "null controller service encountered"
     }
   }
 }
@@ -445,36 +445,6 @@ def configureProcessor(proc, procConfig) {
   }
 }
 
-def configureProcessGroup(pg, pgConfig) {
-
-  log.info "Configuring Process Group: $pgConfig.key ($pg.id)"
-
-  def builder = new JsonBuilder()
-
-  // if no comment is set, update process group comments with a deployment timestamp
-  if (!pg.component.comments) {
-    builder {
-      revision {
-        clientId client
-        version pg.revision.version
-      }
-      id pg.id
-      component {
-        id pg.id
-        comments defaultComment
-      }
-    }
-
-    resp = nifi.put (
-            path: "process-groups/$pg.id",
-            body: builder.toPrettyString(),
-            requestContentType: JSON
-    )
-    assert resp.status == 200
-  }
-
-}
-
 def configureControllerService(cs, Map.Entry cfg) {
   def name = cfg.key
   cs = cs.component
@@ -657,7 +627,7 @@ def instantiateConnection(connConfig) {
     case 201:
       break;
     case 200:
-      log.warn "connection already exists"
+      log.warning "connection already exists"
       break
     default:
       throw new RuntimeException("Error response from connection creation")
@@ -726,7 +696,7 @@ def stopProcessGroup(pgId) {
   if (resp.data.runningCount == 0) {
     log.info 'Done'
   } else {
-    log.warn "Failed to stop the processing group, request timed out after ${maxWaitMs/1000} seconds"
+    log.warning "Failed to stop the processing group, request timed out after ${maxWaitMs/1000} seconds"
     System.exit(-1)
   }
 }
@@ -883,7 +853,7 @@ assert conf
 
 def nifiHostPort = opts.'nifi-api' ?: conf.nifi.url
 if (!nifiHostPort) {
-  log.error 'Please specify a NiFi instance URL in the deployment spec file or via CLI'
+  log.severe 'Please specify a NiFi instance URL in the deployment spec file or via CLI'
   System.exit(-1)
 }
 nifiHostPort = nifiHostPort.endsWith('/') ? nifiHostPort[0..-2] : nifiHostPort
@@ -892,7 +862,7 @@ assert nifiHostPort : "No NiFI REST API endpoint provided"
 nifi = new RESTClient("$nifiHostPort/nifi-api/")
 nifi.handler.failure = { resp, data ->
   resp.setData(data?.text)
-  log.error "HTTP call failed. Status code: $resp.statusLine: $resp.data"
+  log.severe "HTTP call failed. Status code: $resp.statusLine: $resp.data"
   // fail gracefully with a more sensible groovy stacktrace
   assert null : "Terminated script execution"
 }
@@ -922,8 +892,6 @@ conf.templates.each {templateConfig ->
   instantiateTemplate(templateId, templateConfig.value?.position)
 }
 
-log.info "Configuring Process Groups"
-traverseProcessGroups(conf, {pgData -> configureProcessGroup(pgData.pg, pgData.config) })
 log.info "Configuring Controller Services"
 traverseControllerServices(conf, {csData -> configureControllerService(csData.cs, csData.config)})
 log.info "Configuring Processors"
