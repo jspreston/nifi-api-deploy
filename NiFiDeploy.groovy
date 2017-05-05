@@ -1,9 +1,16 @@
 import groovy.json.JsonBuilder
 import groovyx.net.http.RESTClient
+import org.apache.http.conn.ssl.TrustSelfSignedStrategy
 import org.apache.http.entity.mime.MultipartEntity
 import org.apache.http.entity.mime.content.StringBody
+import org.apache.http.impl.client.CloseableHttpClient
+import org.apache.http.impl.client.HttpClients
+import org.apache.http.ssl.SSLContextBuilder
+import org.apache.http.ssl.SSLContexts
 import org.yaml.snakeyaml.Yaml
 
+import javax.net.ssl.SSLContext
+import java.security.KeyStore
 import java.util.logging.Logger
 
 import static groovyx.net.http.ContentType.JSON
@@ -17,7 +24,11 @@ import static groovyx.net.http.Method.POST
         version='1.17')
 @Grab(group='org.apache.httpcomponents',
         module='httpmime',
-        version='4.2.1')
+        version='4.5.3')
+@Grab(group = 'org.apache.httpcomponents',
+        module = 'httpclient',
+        version = '4.5.3')
+
 
 // see actual script content at the bottom of the text,
 // after every implementation method. Groovy compiler likes these much better
@@ -837,7 +848,7 @@ def testTraversal(pgConfig) {
               "found processor ${procData.proc.component.name} = ${procData.config.key}, id ${procData.proc.id}")
   })
 
-  println '#### TRAVERSIGN CONTROLLER SERVICES ####'
+  println '#### TRAVERSING CONTROLLER SERVICES ####'
   traverseControllerServices(pgConfig, {
     csData ->
       println( ("----"*csData.level) +
@@ -851,7 +862,7 @@ log = Logger.getLogger("NiFiDeploy")
 conf = new Yaml().load(new File(deploymentSpec).text)
 assert conf
 
-def nifiHostPort = opts.'nifi-api' ?: conf.nifi.url
+String nifiHostPort = opts.'nifi-api' ?: conf.nifi.url
 if (!nifiHostPort) {
   log.severe 'Please specify a NiFi instance URL in the deployment spec file or via CLI'
   System.exit(-1)
@@ -860,6 +871,37 @@ nifiHostPort = nifiHostPort.endsWith('/') ? nifiHostPort[0..-2] : nifiHostPort
 assert nifiHostPort : "No NiFI REST API endpoint provided"
 
 nifi = new RESTClient("$nifiHostPort/nifi-api/")
+
+if (nifiHostPort.startsWith('https')) {
+  String trustStoreFile = conf.nifi.trustStoreFile
+  String trustStorePass = conf.nifi.trustStorePass
+  String keyStoreFile = conf.nifi.keyStoreFile
+  String keyStorePass = conf.nifi.keyStorePass
+  String privateKeyPass = conf.nifi.privateKeyPass
+
+  KeyStore keyStore = null
+  if (keyStoreFile != null) {
+    keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
+    keyStore.load(new FileInputStream(keyStoreFile), keyStorePass.toCharArray());
+  }
+  // Trust own CA and all self-signed certs
+  SSLContextBuilder sslContextBuilder = SSLContexts.custom()
+  if (trustStoreFile) {
+    sslContextBuilder = sslContextBuilder.loadTrustMaterial(
+            new File(trustStoreFile),
+            trustStorePass.toCharArray(),
+            new TrustSelfSignedStrategy())
+  }
+  if (keyStoreFile) {
+    sslContextBuilder = sslContextBuilder.loadKeyMaterial(keyStore, privateKeyPass.toCharArray())
+  }
+  SSLContext sslContext = sslContextBuilder.build();
+  CloseableHttpClient httpclient = HttpClients.custom()
+          .setSSLContext(sslContext)
+          .build();
+  nifi.setClient(httpclient)
+}
+
 nifi.handler.failure = { resp, data ->
   resp.setData(data?.text)
   log.severe "HTTP call failed. Status code: $resp.statusLine: $resp.data"
