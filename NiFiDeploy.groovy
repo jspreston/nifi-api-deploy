@@ -879,6 +879,13 @@ if (nifiHostPort.startsWith('https')) {
   String keyStorePass = conf.nifi.keyStorePass
   String privateKeyPass = conf.nifi.privateKeyPass
 
+  trustStoreFile == null ? log.warning('No truststore file found') :
+          log.info("truststore file $trustStoreFile")
+  if (trustStorePass == null) log.warning('No truststore password specified')
+  keyStoreFile == null ? log.warning('No keystore file found') : log.info("keystore file $trustStoreFile")
+  if (keyStorePass == null) log.warning('No keystore password specified')
+  if (privateKeyPass == null) log.warning('No private key password specified')
+
   KeyStore keyStore = null
   if (keyStoreFile != null) {
     keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
